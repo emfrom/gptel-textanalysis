@@ -73,7 +73,7 @@
                       :callback (lambda (response _event)
 				  (with-current-buffer buf
 				    (goto-char (point-max))
-				    (insert "\n## " (car xs) "\n\n" response))
+				    (insert "\n\n## " (car xs) "\n\n" response))
 				  (if (null (cdr xs))
 				      (funcall summarise-fn buf)
 				    (step (cdr xs)))))))
@@ -90,10 +90,11 @@
 
 (defun gptel-textanalysis--summarise (buf)
   "Create a summary of buffer BUF containing partial text analyses."
+  (with-current-buffer buf
   (gptel-request
-      (concat gptel-textanalysis-summary-prompt (buffer-string buf))
+      (concat gptel-textanalysis-summary-prompt (buffer-string))
     :callback (lambda (response _event)
-		(gptel-textanalysis--summarise-callback response buf))))
+		(gptel-textanalysis--summarise-callback response buf)))))
 
 (defun gptel-textanalysis-buffer ()
   "Perform a two round text analysis of current buffer."
