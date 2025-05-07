@@ -68,35 +68,40 @@
   "Pass TEXT and all QUESTIONS-LIST to gpt, then call SUMMARISE-FN at the end."
   (let ((buf (get-buffer-create gptel-textanalysis-temp-buffer-name)))
     (cl-labels ((step (xs)
-		  (if (null xs)
-                      (funcall summarise-fn buf)
-                    (gptel-request
+                  (gptel-request
 			(concat (car xs) "\n\n" text)
                       :callback (lambda (response _event)
 				  (with-current-buffer buf
 				    (goto-char (point-max))
-				    (insert "\n---   " prompt "\n" response))
-				  (step (cdr xs)))))))
-      (step text))))
+				    (insert "\n## " (car xs) "\n\n" response))
+				  (if (null (cdr xs))
+				      (funcall summarise-fn buf)
+				    (step (cdr xs)))))))
+      (step questions-list))))
 
 (defun gptel-textanalysis--summarise-callback (result buf)
-  "Prepends RESULT to output buffer."
+  "Prepends RESULT to output buffer BUF."
   (with-current-buffer buf
     (goto-char (point-min))
-    (insert "SUMMARY:\n" result )
+    (insert "# Text analysis\n\n## Summary\n\n" result "\n")
+    (rename-buffer "*gptel text analysis*" t)
+    (markdown-mode)
     (message "LLM Textanalysis complete")))
 
 (defun gptel-textanalysis--summarise (buf)
-  "Create a summary of BUFfer containing text analyses"
+  "Create a summary of buffer BUF containing partial text analyses."
   (gptel-request
       (concat gptel-textanalysis-summary-prompt (buffer-string buf))
     :callback (lambda (response _event)
 		(gptel-textanalysis--summarise-callback response buf))))
 
 (defun gptel-textanalysis-buffer ()
-  "Perform a two round text analysis of current buffer"
+  "Perform a two round text analysis of current buffer."
   (interactive)
-  (gptel-textanalysis--process-list (buffer-string (current-buffer) gptel-textanalysis-questions #'gptel-textanalysis--summarise)))
+  (gptel-textanalysis--process-list
+   (buffer-string)
+   gptel-textanalysis-questions
+   #'gptel-textanalysis--summarise))
 
 
 ;; ;;
