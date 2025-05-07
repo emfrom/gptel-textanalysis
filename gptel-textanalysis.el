@@ -1,30 +1,22 @@
+;;; gptel-textanalysis.el --- GPTel text analysis functions
+
+;;; -*- lexical-binding: t; -*-
+
+;; Author: E.M. From
+;; Version: 0.1
+;; Package-Requires: ((emacs "27.1"))
+;; Keywords: gptel, text analysis
+;; URL:https://github.com/emfrom/gptel-textanalysis
 
 
-(defvar gptel-textanalysis-temp-buffer-name "*gptel text analysis temp*")
+;;; Commentary:
 
-(defun gptel-textanalysis--append-to-analysis-buffer (response)
-  "Append RESPONSE to the analysis buffer."
-  (let ((buf (get-buffer-create gptel-textanalysis-analysis-temp-buffer-name)))
-    (with-current-buffer buf
-      (goto-char (point-max))
-      (insert "\n\n---\n\n" response))))
+;; This file contains functions for performing text analysis using GPTel
+;; as the LLM intermediary.
+;; 
+;; Proof-of-concept version
 
-(defun gptel-textanalysis-send-string-and-buffer (prompt buffer)
-  "Send PROMPT and contents of BUFFER to GPTel."
-  (let ((content (with-current-buffer buffer (buffer-string))))
-    (gptel-textanalysis-send
-     (concat prompt "\n\n" content)
-     :callback #'gptel-textanalysis--append-to-analysis-buffer)))
-
-(defun gptel-textanalysis-send-string-and-file (prompt file)
-  "Send PROMPT and contents of FILE to GPTel."
-  (let ((content (with-temp-buffer
-                   (insert-file-contents file)
-                   (buffer-string))))
-    (gptel-textanalysis-send
-     (concat prompt "\n\n" content)
-     :callback #'gptel-textanalysis--append-to-analysis-buffer)))
-
+;;; Code:
 
 (defvar gptel-textanalysis-temp-buffer-name "*gptel text analysis temp*")
 
@@ -54,6 +46,41 @@
     ("Analyse this with respect to human rights." . "human rights")
     ("Analyse this with respect to goals, values and editorial standards expressed by Reuters." . "Reuters editorial standards")))
 
+(defvar gptel-textanalysis-summary_prompt
+  (concat "Summarise the following analysis down to 500 words\n",
+	  "Prioritize very strictlk in the following order:",
+	  "1. Violations or encouragment of violations of human right or law",
+	  "2. Clear departures from Reuters editorial standards",
+	  "3. Clear departures from evidentiary standards by lacking or incomplete sources",
+	  "4. Depatures in language, clarity and assumptions from good writing",
+	  "5. Tone, emotional and ecultural aspects.",
+	  "6. General improvements not covered by previous points."))
+
+
+(defun gptel-textanalysis--append-to-analysis-buffer (response)
+  "Append RESPONSE to the analysis buffer."
+  (let ((buf (get-buffer-create gptel-textanalysis-analysis-temp-buffer-name)))
+    (with-current-buffer buf
+      (goto-char (point-max))
+      (insert "\n\n---\n\n" response))))
+
+(defun gptel-textanalysis-send-string-and-buffer (prompt buffer)
+  "Send PROMPT and contents of BUFFER to GPTel."
+  (let ((content (with-current-buffer buffer (buffer-string))))
+    (gptel-textanalysis-send
+     (concat prompt "\n\n" content)
+     :callback #'gptel-textanalysis--append-to-analysis-buffer)))
+
+(defun gptel-textanalysis-send-string-and-file (prompt file)
+  "Send PROMPT and contents of FILE to GPTel."
+  (let ((content (with-temp-buffer
+                   (insert-file-contents file)
+                   (buffer-string))))
+    (gptel-textanalysis-send
+     (concat prompt "\n\n" content)
+     :callback #'gptel-textanalysis--append-to-analysis-buffer)))
+
+
 (defun gptel-textanalysis--clear-or-create-answer-buffer ()
   "Clear the answer buffer or create it if it doesn't exist."
   (let ((buf (get-buffer-create gptel-textanalysis-temp-buffer-name)))
@@ -79,8 +106,6 @@
       (gptel-textanalysis-send-string-and-file
        (car question)
        file))))
-
-(defvar gptel-textanalysis-summary_prompt "Summarise the analysis of the following.")
 
 (defun gptel-textanalysis-send-summary-from-buffer ()
   "Send the summary of the temporary buffer using the current buffer."
