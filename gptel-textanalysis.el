@@ -1,7 +1,7 @@
 ;;; gptel-textanalysis.el --- GPTel text analysis functions -*- lexical-binding: t; -*-
 
 ;; Author: E.M. From
-;; Version: 0.1
+;; Version: 0.2
 ;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: gptel, text analysis
 ;; URL:https://github.com/emfrom/gptel-textanalysis
