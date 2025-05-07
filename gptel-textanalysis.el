@@ -52,26 +52,34 @@
 	  "Prioritize very strictly in the following order:\n"
 	  "1. Violations or encouragment of violations of human right or law\n"
 	  "2. Clear departures from Reuters editorial standards and values\n"
-	  "3. Clear departures from evidentiary standards by lacking or incomplete sources\n"
+	  "3. Clear departures from evidentiary standards and lacking or incomplete sources\n"
 	  "4. Depatures in language, clarity and assumptions from good writing\n"
 	  "5. Tone, emotional and ecultural aspects.\n"
 	  "6. General improvements not covered by previous points.\n"
 	  "TEXT FOLLOWS THIS LINE\n"))
 
 
-(defun gptel-textanalysis--append-to-analysis-buffer (response _event)
-  "Append RESPONSE to the analysis buffer."
+
+(defun gptel-textanalysis--append-to-analysis-buffer (prompt response)
+  "Append RESPONSE to the analysis buffer, indicating what PROMPT was asked."
   (let ((buf (get-buffer-create gptel-textanalysis-temp-buffer-name)))
     (with-current-buffer buf
       (goto-char (point-max))
-      (insert "\n\n---\n\n" response))))
+      (insert (concat "---   " prompt "\n\n") response))))
+
+(defun gptel-textanalysis--make-callback (prompt)
+  "Create a gptel callback for PROMPT."
+  (lambda (response _event)
+    (gptel-textanalysis--append-to-analysis-buffer prompt response)
+    (message "GPT response: %s" response)))
+
 
 (defun gptel-textanalysis-send-string-and-buffer (prompt buffer)
   "Send PROMPT and contents of BUFFER to GPTel."
   (let ((content (with-current-buffer buffer (buffer-string))))
     (gptel-request
      (concat prompt "\n\n" content)
-     :callback #'gptel-textanalysis--append-to-analysis-buffer)))
+     :callback (gptel-textanalysis--make-callback prompt))))
 
 
 (defun gptel-textanalysis--clear-or-create-answer-buffer ()
@@ -96,7 +104,6 @@
      gptel-textanalysis-summary-prompt
      gptel-textanalysis-temp-buffer-name))
     
-
 
 (defun gptel-textanalysis--rename-and-display-buffer ()
   "Rename the temporary buffer, make it visible, and scroll to the last answer."
