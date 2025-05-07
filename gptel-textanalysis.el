@@ -18,91 +18,97 @@
 
 (require 'gptel)
 (require 'cl-lib)
+(require 'threads)
 
-(defvar gptel-textanalysis-temp-buffer-name "*gptel text analysis temp*")
+(defvar gptel-textanalysis-buffer-name "*gptel text analysis*")
 
 (defvar gptel-textanalysis-questions
-  '("Analyse this with respect to rhetorical devices."
-    "Analyse this with respect to argument structure."
-    "Analyse this with respect to tone and mood."
-    "Analyse this with respect to implicit assumptions."
-    "Analyse this with respect to narrative perspective."
-    "Analyse this with respect to lexical choice."
-    "Analyse this with respect to coherence and cohesion."
-    "Analyse this with respect to logical consistency."
-    "Analyse this with respect to persuasive strategies."
-    "Analyse this with respect to stylistic register."
-    "Analyse this with respect to bias or partiality."
-    "Analyse this with respect to emotional appeal."
-    "Analyse this with respect to clarity and ambiguity."
-    "Analyse this with respect to intended audience."
-    "Analyse this with respect to use of figurative language."
-    "Analyse this with respect to thematic content."
-    "Analyse this with respect to cultural references."
-    "Analyse this with respect to sentence complexity."
-    "Analyse this with respect to formality level."
-    "Analyse this with respect to use of evidence."
-    "Analyse this with respect to formal and informal fallacies."
-    "Analyse this with respect to match between questions formulated and conclusions given."
-    "Analyse this with respect to human rights."
-    "Analyse this with respect to goals, values and editorial standards expressed by Reuters."))
+  '("Rhetorical devices"
+    "Argument structure"
+    "Tone and mood"
+    "Implicit assumptions"
+    "Narrative perspective"
+    "Lexical choice"
+    "Coherence and cohesion"
+    "Logical consistency"
+    "Persuasive strategies"
+    "Stylistic register"
+    "Bias or partiality"
+    "Emotional appeal"
+    "Clarity and ambiguity"
+    "Intended audience"
+    "Use of figurative language"
+    "Thematic content"
+    "Cultural references"
+    "Sentence complexity"
+    "Formality level"
+    "Use of evidence"
+    "Formal and informal fallacies"
+    "Match between questions formulated and conclusions given"
+    "Human rights"
+    "Goals, values and editorial standards expressed by Reuters"))
 
 
 (defvar gptel-textanalysis-summary-prompt
-  (concat "Summarise the following down to 500 words\n"
+  (concat "Summarise the following down to 200 words\n"
 	  "Prioritize very strictly in the following order\n"
 	  "1. Violations or encouragment of violations of human right or law\n"
 	  "2. Clear departures from Reuters editorial standards and values\n"
 	  "3. Clear departures from evidentiary standards and lacking or incomplete sources\n"
-	  "4. Depatures in language, clarity and assumptions from good writing aimed at objectivity\n"
-	  "5. Tone, emotional and ecultural aspects.\n"
+	  "4. Departures in language, clarity and assumptions from good writing aimed at objectivity\n"
+	  "5. Tone, emotional and cultural aspects.\n"
 	  "6. General improvements not covered by previous points.\n"
 	  "Prioritize means: dont analyse lower priorities if there are things to say about higher ones\n"
-	  "TEXT FOLLOWS THIS LINE\n"))
+	  "TEXT TO ANALYSE FOLLOWS THIS LINE\n\n"))
 
+
+(defun gptel-textanalysis--summarise (response-list)
+  "Create a buffer containing partial text analyses from RESPONSE-LIST."
+  (let ((buf (generate-new-buffer gptel-textanalysis-buffer-name)))
+    (with-current-buffer buf
+      (markdown-mode)
+      (dolist (item response-list)
+	(insert "## " (car item) "\n\n" (cdr item) "\n\n")
+	(gptel-request
+	    (concat gptel-textanalysis-summary-prompt (buffer-string))
+	  :callback (lambda (response _event)
+                      (with-current-buffer buf
+			(goto-char (point-min))
+			(insert "# Text analysis\n\n## Summary\n\n" response "\n\n")
+			(message "LLM Textanalysis complete"))))))))
 
 ;;
-;; So this way is very slow, but works
+;; Use a proper mutex for sync, much faster
 ;; 
-(defun gptel-textanalysis--process-list (text questions-list summarise-fn)
-  "Pass TEXT and all QUESTIONS-LIST to gpt, then call SUMMARISE-FN at the end."
-  (let ((buf (get-buffer-create gptel-textanalysis-temp-buffer-name)))
-    (cl-labels ((step (xs)
-                  (gptel-request
-			(concat (car xs) "\n\n" text)
-                      :callback (lambda (response _event)
-				  (with-current-buffer buf
-				    (goto-char (point-max))
-				    (insert "\n\n## " (car xs) "\n\n" response))
-				  (if (null (cdr xs))
-				      (funcall summarise-fn buf)
-				    (step (cdr xs)))))))
-      (step questions-list))))
+(defun gptel-textanalysis--process-list (text questions-list)
+  "Pass TEXT and all QUESTIONS-LIST to GPT."
+  (let ((lock (make-mutex "gptel-textanalysis--lock"))
+        (response-list nil))
+    (dolist (question questions-list)
+      (gptel-request (concat
+                      "Analyse the following text with respect to: "
+                      question
+                      "\n"
+                      "Be as terse and to the point as possible\n"
+		      "Stay below 150 words\n"
+		      "Return the result in **Markdown format**\n"
+		      "TEXT TO ANALYSE FOLLOWS THIS LINE\n\n"
+                      text)
+        :callback (lambda (response _event)
+                    (mutex-lock lock)
+                    (push (cons question response) response-list)
+                    (if (= (length response-list) (length questions-list))
+                        ;; All callbacks are done
+                        (gptel-textanalysis--summarise response-list))
+		    (mutex-unlock lock))))))
 
-(defun gptel-textanalysis--summarise-callback (result buf)
-  "Prepends RESULT to output buffer BUF."
-  (with-current-buffer buf
-    (goto-char (point-min))
-    (insert "# Text analysis\n\n## Summary\n\n" result "\n")
-    (rename-buffer "*gptel text analysis*" t)
-    (markdown-mode)
-    (message "LLM Textanalysis complete")))
-
-(defun gptel-textanalysis--summarise (buf)
-  "Create a summary of buffer BUF containing partial text analyses."
-  (with-current-buffer buf
-  (gptel-request
-      (concat gptel-textanalysis-summary-prompt (buffer-string))
-    :callback (lambda (response _event)
-		(gptel-textanalysis--summarise-callback response buf)))))
 
 (defun gptel-textanalysis-buffer ()
   "Perform a two round text analysis of current buffer."
   (interactive)
   (gptel-textanalysis--process-list
    (buffer-string)
-   gptel-textanalysis-questions
-   #'gptel-textanalysis--summarise))
+   gptel-textanalysis-questions))
 
 
 (provide 'gptel-textanalysis)
